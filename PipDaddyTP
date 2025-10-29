@@ -1,0 +1,1906 @@
+//+------------------------------------------------------------------+
+//|                                              PipDaddy4X v3.0     |
+//|                              Professional Multi-Strategy EA      |
+//|                                    Optimized & Clean Rewrite     |
+//+------------------------------------------------------------------+
+#property copyright "PipDaddy4X"
+#property version   "3.00"
+#property strict
+#property description "Professional automated trading system"
+#property description "Trend Following + SMC + Multi-Asset support"
+
+//+------------------------------------------------------------------+
+//| ENUMERATIONS                                                      |
+//+------------------------------------------------------------------+
+enum ENUM_STRATEGY_MODE
+{
+   STRATEGY_TREND = 0,    // Trend Following
+   STRATEGY_SMC = 1,      // Smart Money Concepts
+   STRATEGY_AUTO = 2      // Auto-Select
+};
+
+//+------------------------------------------------------------------+
+//| INPUT PARAMETERS - Organized & Clean                             |
+//+------------------------------------------------------------------+
+input group "=== 🎯 Strategy Selection ==="
+input ENUM_STRATEGY_MODE StrategyMode = STRATEGY_AUTO;  // Strategy Mode
+input ENUM_STRATEGY_MODE XAUUSD_Strategy = STRATEGY_SMC; // Gold Strategy
+input ENUM_STRATEGY_MODE Forex_Strategy = STRATEGY_TREND; // Forex Strategy
+input ENUM_STRATEGY_MODE Index_Strategy = STRATEGY_TREND; // Index Strategy
+
+input group "=== 📈 Trend Strategy ==="
+input int Trend_FastMA = 10;              // Fast MA Period
+input int Trend_SlowMA = 30;              // Slow MA Period
+input int Trend_RSI_Period = 14;          // RSI Period
+input double Trend_RSI_High = 65;         // RSI Overbought
+input double Trend_RSI_Low = 35;          // RSI Oversold
+input double Trend_ATR_SL = 1.5;          // ATR SL Multiplier
+input double Trend_ATR_TP = 3.0;          // ATR TP Multiplier
+
+input group "=== 📊 SMC Strategy ==="
+input int SMC_OB_Lookback = 50;           // Order Block Lookback
+input double SMC_OB_MinStrength = 1.3;    // Min OB Strength
+input int SMC_OB_MaxAgeHours = 48;        // Max OB Age (hours)
+input double SMC_LiqSweepPips = 5;        // Liquidity Sweep (pips)
+input bool SMC_RequireEngulfing = false;  // Require Engulfing
+input int SMC_EngulfingBodyPct = 60;      // Min Engulfing Body %
+input double SMC_MinConfidence = 60;      // Min Confidence %
+input bool SMC_DrawOrderBlocks = true;    // Draw OBs on Chart
+
+input group "=== 💰 Risk Management ==="
+input double Risk_BasePercent = 5.0;      // Base Risk %
+input bool Risk_SmartScaling = true;      // Smart Risk Scaling
+input double Risk_ScaleEveryPct = 10.0;   // Scale Every X% Profit
+input double Risk_MaxPercent = 10.0;      // Maximum Risk %
+input double Risk_MaxDailyLoss = 10.0;    // Max Daily Loss %
+input int Risk_MaxTradesPerDay = 12;      // Max Trades/Day
+input double Risk_MinRR = 2.0;            // Minimum R:R Ratio
+input bool Risk_UseFixedLot = false;      // Use Fixed Lot
+input double Risk_FixedLotSize = 0.01;    // Fixed Lot Size
+
+input group "=== 🎲 Position Management ==="
+input int Pos_MaxOpen = 3;                // Max Open Positions
+input bool Pos_AllowReentry = true;       // Allow Reentry (All Pairs)
+input double Pos_ReentryDistance = 15;    // Reentry Distance (pips)
+input int Pos_MaxReentries = 1;           // Max Reentries Per Setup
+input double Pos_TrailActivate = 40;      // Trail Activate (pips) [Not used if Multi-TP ON]
+input double Pos_TrailDistance = 20;      // Trail Distance (pips) [Not used if Multi-TP ON]
+input bool Pos_UseBreakEven = true;       // Use Break-Even [Not used if Multi-TP ON]
+input double Pos_BreakEvenTrigger = 20;   // BE Trigger (pips) [Not used if Multi-TP ON]
+input double Pos_BreakEvenPlus = 5;       // BE Plus (pips) [Not used if Multi-TP ON]
+
+input group "=== 🏆 Symbol-Specific Lots ==="
+input double Lot_XAUUSD_Pct = 10;         // Gold Lot %
+input double Lot_BTC_Pct = 5;             // Bitcoin Lot %
+input double Lot_USDJPY_Pct = 100;        // USDJPY Lot %
+input double Lot_Forex_Pct = 100;         // Forex Lot %
+input double Lot_Index_Pct = 100;         // Index Lot %
+
+input group "=== 🥇 XAUUSD Specific ==="
+input double XAUUSD_SL_Pips = 15;         // Gold SL (pips)
+input double XAUUSD_TP_Mult = 4.0;        // Gold TP Multiplier
+input double XAUUSD_TrailPips = 50;       // Gold Trail (pips)
+input double XAUUSD_BreakEvenPips = 30;   // Gold BE (pips)
+input int XAUUSD_Deviation = 50;          // Gold Slippage
+
+input group "=== 🎯 Multi-Level Take Profit ==="
+input bool UseMultiTP = true;             // Enable Multi-Level TP (Overrides standard BE/Trail)
+input double TP1_Pips = 30;               // TP1 Distance (pips)
+input double TP1_ClosePercent = 30;       // TP1 Close % of Position
+input double TP2_Pips = 60;               // TP2 Distance (pips)
+input double TP2_ClosePercent = 30;       // TP2 Close % of Position
+input double TP3_Pips = 100;              // TP3 Distance (Full Close)
+input bool TP_MoveToBreakeven = true;     // Move SL to BE after TP1 (Multi-TP BE)
+input double TP_BreakevenPlus = 5;        // BE Plus Pips after TP1 (Multi-TP BE)
+
+input group "=== ₿ Bitcoin (HIGH RISK) ==="
+input bool BTC_Enable = false;            // Enable Bitcoin Trading
+input double BTC_SL_Pips = 200;           // Bitcoin SL (pips)
+input double BTC_TP_Mult = 3.0;           // Bitcoin TP Multiplier
+input int BTC_BreakoutPeriod = 20;        // Breakout Period
+input double BTC_VolatilityMult = 2.0;    // Volatility Multiplier
+
+input group "=== 🇯🇵 USDJPY Specific ==="
+input double USDJPY_SL_Pips = 20;         // USDJPY SL (pips)
+input double USDJPY_TP_Mult = 3.0;        // USDJPY TP Multiplier
+input bool USDJPY_AsianSession = true;    // Prioritize Asian Session
+
+input group "=== 🔔 Alerts & Display ==="
+input bool Alert_Enable = true;           // Enable Alerts
+input double Alert_ProfitPips = 100;      // Alert at Profit (pips)
+input bool UI_ShowPanel = true;           // Show Info Panel
+input int UI_PanelX = 20;                 // Panel X Position
+input int UI_PanelY = 50;                 // Panel Y Position
+input double Filter_MaxSpread = 20;       // Max Spread (pips)
+
+input group "=== ⚙️ General Settings ==="
+input int Config_MagicNumber = 888888;    // Magic Number
+input string Config_CommentPrefix = "PipDaddy"; // Comment Prefix
+
+//+------------------------------------------------------------------+
+//| STRUCTURES - Clean Data Organization                             |
+//+------------------------------------------------------------------+
+struct TradeSignal
+{
+   bool valid;
+   int direction;           // 1=Buy, -1=Sell
+   double entry;
+   double sl;
+   double tp;
+   string reason;
+   double confidence;
+};
+
+struct OrderBlock
+{
+   datetime time;
+   double high;
+   double low;
+   bool isBullish;
+   double strength;
+   bool drawn;
+};
+
+struct ReentryTracker
+{
+   double entryPrice;
+   int direction;
+   int count;
+   datetime lastTime;
+};
+
+struct IndicatorCache
+{
+   double fastMA;
+   double slowMA;
+   double rsi;
+   double atr;
+   datetime updateTime;
+};
+
+struct MarketCondition
+{
+   string status;           // "Bullish", "Bearish", "Ranging"
+   double rsiValue;
+   bool trendUp;
+   string obStatus;
+};
+
+struct PositionTPTracker
+{
+   ulong ticket;
+   bool tp1_hit;
+   bool tp2_hit;
+   bool be_moved;
+   double originalLot;
+};
+
+//+------------------------------------------------------------------+
+//| GLOBAL VARIABLES - Organized by Purpose                          |
+//+------------------------------------------------------------------+
+// Indicator Handles
+int g_handleFastMA = INVALID_HANDLE;
+int g_handleSlowMA = INVALID_HANDLE;
+int g_handleRSI = INVALID_HANDLE;
+int g_handleATR = INVALID_HANDLE;
+
+// Trading State
+datetime g_lastBarTime = 0;
+datetime g_lastPanelUpdate = 0;
+int g_scanCounter = 0;
+
+// Daily Tracking
+int g_dailyTradeCount = 0;
+double g_dailyPnL = 0;
+double g_dailyStartBalance = 0;
+datetime g_currentDay = 0;
+
+// Reentry Tracking
+ReentryTracker g_reentry;
+
+// Order Block Tracking
+OrderBlock g_bullishOB;
+OrderBlock g_bearishOB;
+datetime g_lastOBScan = 0;
+
+// Performance Cache
+IndicatorCache g_cache;
+MarketCondition g_market;
+
+// Alert Tracking
+double g_lastAlertLevel[];
+ulong g_alertTickets[];
+
+// Multi-TP Tracking
+PositionTPTracker g_tpTrackers[];
+
+//+------------------------------------------------------------------+
+//| INITIALIZATION                                                    |
+//+------------------------------------------------------------------+
+int OnInit()
+{
+   Print("═══════════════════════════════════════════════════════");
+   Print("  🚀 PipDaddy4X v3.0 - INITIALIZED");
+   Print("═══════════════════════════════════════════════════════");
+   Print("Symbol: ", _Symbol);
+   Print("Strategy: ", GetStrategyName());
+   Print("Base Risk: ", Risk_BasePercent, "%");
+   Print("Smart Risk: ", Risk_SmartScaling ? "ON" : "OFF");
+   Print("Max Positions: ", Pos_MaxOpen);
+   
+   // Initialize indicators
+   if(!InitializeIndicators())
+   {
+      Print("❌ ERROR: Failed to initialize indicators");
+      return INIT_FAILED;
+   }
+   
+   // Initialize tracking
+   g_lastBarTime = iTime(_Symbol, PERIOD_M5, 0);
+   g_currentDay = GetCurrentDay();
+   g_dailyStartBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+   
+   // Initialize structures
+   ResetReentryTracker();
+   ResetOrderBlocks();
+   ArrayResize(g_lastAlertLevel, 0);
+   ArrayResize(g_alertTickets, 0);
+   ArrayResize(g_tpTrackers, 0);
+   
+   // Create UI
+   if(UI_ShowPanel)
+      CreateInfoPanel();
+   
+   Print("✅ Initialization complete - Ready to trade!");
+   Print("═══════════════════════════════════════════════════════");
+   
+   return INIT_SUCCEEDED;
+}
+
+//+------------------------------------------------------------------+
+//| DEINITIALIZATION                                                  |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   // Release indicators
+   ReleaseIndicators();
+   
+   // Clean up objects
+   ObjectsDeleteAll(0, "PD_");
+   ObjectsDeleteAll(0, "OB_");
+   
+   Print("═══════════════════════════════════════════════════════");
+   Print("PipDaddy4X Stopped - Reason: ", reason);
+   Print("Final Daily P&L: $", DoubleToString(g_dailyPnL, 2));
+   Print("═══════════════════════════════════════════════════════");
+}
+
+//+------------------------------------------------------------------+
+//| MAIN TICK HANDLER - Clean Event Flow                             |
+//+------------------------------------------------------------------+
+void OnTick()
+{
+   // Real-time UI updates (every second)
+   if(UI_ShowPanel && TimeCurrent() - g_lastPanelUpdate >= 1)
+   {
+      UpdateInfoPanel();
+      g_lastPanelUpdate = TimeCurrent();
+      g_scanCounter++;
+   }
+   
+   // Check for new bar
+   datetime currentBarTime = iTime(_Symbol, PERIOD_M5, 0);
+   if(currentBarTime == g_lastBarTime)
+      return;
+   
+   g_lastBarTime = currentBarTime;
+   
+   // Daily reset check
+   CheckDailyReset();
+   
+   // Update performance metrics
+   UpdateDailyPnL();
+   UpdateIndicatorCache();
+   
+   // Pre-trade validation
+   if(!PreTradeValidation())
+      return;
+   
+   // Analyze market conditions
+   AnalyzeMarket();
+   
+   // Get trade signal
+   TradeSignal signal = GenerateSignal();
+   
+   // Display signal info
+   if(signal.valid)
+      DisplaySignalInfo(signal);
+   
+   // Execute if valid
+   if(signal.valid)
+      ProcessSignal(signal);
+   
+   // Manage open positions
+   ManageAllPositions();
+}
+
+//+------------------------------------------------------------------+
+//| INDICATOR MANAGEMENT - Centralized                               |
+//+------------------------------------------------------------------+
+bool InitializeIndicators()
+{
+   g_handleFastMA = iMA(_Symbol, PERIOD_M5, Trend_FastMA, 0, MODE_EMA, PRICE_CLOSE);
+   g_handleSlowMA = iMA(_Symbol, PERIOD_M5, Trend_SlowMA, 0, MODE_SMA, PRICE_CLOSE);
+   g_handleRSI = iRSI(_Symbol, PERIOD_M5, Trend_RSI_Period, PRICE_CLOSE);
+   g_handleATR = iATR(_Symbol, PERIOD_M5, 14);
+   
+   return (g_handleFastMA != INVALID_HANDLE && 
+           g_handleSlowMA != INVALID_HANDLE &&
+           g_handleRSI != INVALID_HANDLE && 
+           g_handleATR != INVALID_HANDLE);
+}
+
+void ReleaseIndicators()
+{
+   if(g_handleFastMA != INVALID_HANDLE) IndicatorRelease(g_handleFastMA);
+   if(g_handleSlowMA != INVALID_HANDLE) IndicatorRelease(g_handleSlowMA);
+   if(g_handleRSI != INVALID_HANDLE) IndicatorRelease(g_handleRSI);
+   if(g_handleATR != INVALID_HANDLE) IndicatorRelease(g_handleATR);
+}
+
+void UpdateIndicatorCache()
+{
+   // Only update if older than 5 seconds (performance optimization)
+   if(TimeCurrent() - g_cache.updateTime < 5)
+      return;
+   
+   double fastMA[], slowMA[], rsi[], atr[];
+   ArraySetAsSeries(fastMA, true);
+   ArraySetAsSeries(slowMA, true);
+   ArraySetAsSeries(rsi, true);
+   ArraySetAsSeries(atr, true);
+   
+   if(CopyBuffer(g_handleFastMA, 0, 0, 1, fastMA) > 0)
+      g_cache.fastMA = fastMA[0];
+   if(CopyBuffer(g_handleSlowMA, 0, 0, 1, slowMA) > 0)
+      g_cache.slowMA = slowMA[0];
+   if(CopyBuffer(g_handleRSI, 0, 0, 1, rsi) > 0)
+      g_cache.rsi = rsi[0];
+   if(CopyBuffer(g_handleATR, 0, 0, 1, atr) > 0)
+      g_cache.atr = atr[0];
+   
+   g_cache.updateTime = TimeCurrent();
+}
+
+//+------------------------------------------------------------------+
+//| PRE-TRADE VALIDATION - All Checks in One Place                   |
+//+------------------------------------------------------------------+
+bool PreTradeValidation()
+{
+   // Check spread
+   if(!CheckSpread())
+      return false;
+   
+   // Check account balance
+   if(AccountInfoDouble(ACCOUNT_BALANCE) < 100)
+   {
+      Print("⚠️ Account balance too low");
+      return false;
+   }
+   
+   // Check risk limits
+   if(g_dailyTradeCount >= Risk_MaxTradesPerDay)
+   {
+      Print("⚠️ Daily trade limit reached");
+      return false;
+   }
+   
+   double maxLoss = g_dailyStartBalance * (Risk_MaxDailyLoss / 100.0);
+   if(g_dailyPnL <= -maxLoss)
+   {
+      Print("⚠️ Daily loss limit reached");
+      return false;
+   }
+   
+   // Check position limits
+   if(CountOpenPositions() >= Pos_MaxOpen && !Pos_AllowReentry)
+      return false;
+   
+   return true;
+}
+
+bool CheckSpread()
+{
+   long spread = SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
+   double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   double spreadPips = spread * point / (point * 10);
+   
+   return (spreadPips <= Filter_MaxSpread);
+}
+
+//+------------------------------------------------------------------+
+//| SIGNAL GENERATION - Unified Entry Point                          |
+//+------------------------------------------------------------------+
+TradeSignal GenerateSignal()
+{
+   TradeSignal signal;
+   signal.valid = false;
+   
+   // Route to appropriate strategy
+   if(IsBitcoinSymbol() && BTC_Enable)
+      signal = GetBitcoinSignal();
+   else if(IsUSDJPYSymbol())
+      signal = GetUSDJPYSignal();
+   else
+   {
+      ENUM_STRATEGY_MODE strategy = GetActiveStrategy();
+      if(strategy == STRATEGY_TREND)
+         signal = GetTrendSignal();
+      else
+         signal = GetSMCSignal();
+   }
+   
+   return signal;
+}
+
+//+------------------------------------------------------------------+
+//| TREND STRATEGY - Optimized                                       |
+//+------------------------------------------------------------------+
+TradeSignal GetTrendSignal()
+{
+   TradeSignal signal;
+   signal.valid = false;
+   signal.confidence = 0;
+   
+   // Get indicator arrays
+   double fastMA[], slowMA[], rsi[];
+   ArraySetAsSeries(fastMA, true);
+   ArraySetAsSeries(slowMA, true);
+   ArraySetAsSeries(rsi, true);
+   
+   if(CopyBuffer(g_handleFastMA, 0, 0, 3, fastMA) < 3) return signal;
+   if(CopyBuffer(g_handleSlowMA, 0, 0, 3, slowMA) < 3) return signal;
+   if(CopyBuffer(g_handleRSI, 0, 0, 3, rsi) < 3) return signal;
+   
+   double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   
+   // Bullish conditions
+   bool maCrossUp = (fastMA[1] > slowMA[1] && fastMA[2] <= slowMA[2]);
+   bool rsiOversold = (rsi[1] < Trend_RSI_Low && rsi[0] > rsi[1]);
+   bool priceAboveMA = price > fastMA[0];
+   bool uptrend = fastMA[0] > slowMA[0];
+   
+   if((maCrossUp || (uptrend && rsiOversold)) && priceAboveMA)
+   {
+      signal.valid = true;
+      signal.direction = 1;
+      signal.entry = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      signal.sl = signal.entry - (g_cache.atr * Trend_ATR_SL);
+      signal.tp = signal.entry + (g_cache.atr * Trend_ATR_TP);
+      signal.reason = "TREND BUY: ";
+      if(maCrossUp) signal.reason += "MA Cross↑ | ";
+      if(rsiOversold) signal.reason += "RSI OS | ";
+      signal.reason += StringFormat("RSI:%.1f", rsi[0]);
+      signal.confidence = 70 + (maCrossUp ? 15 : 0) + (rsiOversold ? 15 : 0);
+      
+      if(!ValidateRiskReward(signal))
+         signal.valid = false;
+   }
+   // Bearish conditions
+   else
+   {
+      bool maCrossDown = (fastMA[1] < slowMA[1] && fastMA[2] >= slowMA[2]);
+      bool rsiOverbought = (rsi[1] > Trend_RSI_High && rsi[0] < rsi[1]);
+      bool priceBelowMA = price < fastMA[0];
+      bool downtrend = fastMA[0] < slowMA[0];
+      
+      if((maCrossDown || (downtrend && rsiOverbought)) && priceBelowMA)
+      {
+         signal.valid = true;
+         signal.direction = -1;
+         signal.entry = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+         signal.sl = signal.entry + (g_cache.atr * Trend_ATR_SL);
+         signal.tp = signal.entry - (g_cache.atr * Trend_ATR_TP);
+         signal.reason = "TREND SELL: ";
+         if(maCrossDown) signal.reason += "MA Cross↓ | ";
+         if(rsiOverbought) signal.reason += "RSI OB | ";
+         signal.reason += StringFormat("RSI:%.1f", rsi[0]);
+         signal.confidence = 70 + (maCrossDown ? 15 : 0) + (rsiOverbought ? 15 : 0);
+         
+         if(!ValidateRiskReward(signal))
+            signal.valid = false;
+      }
+   }
+   
+   return signal;
+}
+
+//+------------------------------------------------------------------+
+//| SMC STRATEGY - Optimized with Caching                            |
+//+------------------------------------------------------------------+
+TradeSignal GetSMCSignal()
+{
+   TradeSignal signal;
+   signal.valid = false;
+   signal.confidence = 0;
+   
+   // Update order blocks (cached for 1 hour)
+   if(TimeCurrent() - g_lastOBScan > 3600)
+   {
+      ScanOrderBlocks();
+      g_lastOBScan = TimeCurrent();
+   }
+   
+   double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   
+   // Check if price in bullish OB
+   if(g_bullishOB.strength >= SMC_OB_MinStrength && 
+      price >= g_bullishOB.low && price <= g_bullishOB.high)
+   {
+      // Check OB age
+      int ageHours = (int)((TimeCurrent() - g_bullishOB.time) / 3600);
+      if(ageHours > SMC_OB_MaxAgeHours)
+         return signal;
+      
+      bool hasConfirmation = !SMC_RequireEngulfing || IsEngulfingCandle(true);
+      
+      if(hasConfirmation)
+      {
+         signal.valid = true;
+         signal.direction = 1;
+         signal.entry = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+         
+         double slPips = IsXAUUSDSymbol() ? XAUUSD_SL_Pips : 15;
+         double pipValue = SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 10;
+         
+         signal.sl = g_bullishOB.low - (slPips * pipValue);
+         double riskPips = MathAbs(signal.entry - signal.sl) / pipValue;
+         double tpMult = IsXAUUSDSymbol() ? XAUUSD_TP_Mult : Risk_MinRR;
+         signal.tp = signal.entry + (riskPips * tpMult * pipValue);
+         
+         signal.reason = StringFormat("SMC BUY: OB Age:%dh | Str:%.1f", ageHours, g_bullishOB.strength);
+         if(CheckLiquiditySweep(true)) signal.reason += " | LiqSweep";
+         if(hasConfirmation && SMC_RequireEngulfing) signal.reason += " | Engulf";
+         
+         signal.confidence = 60 + (g_bullishOB.strength * 5);
+         if(CheckLiquiditySweep(true)) signal.confidence += 15;
+         if(hasConfirmation && SMC_RequireEngulfing) signal.confidence += 10;
+         
+         if(signal.confidence < SMC_MinConfidence)
+            signal.valid = false;
+      }
+   }
+   // Check if price in bearish OB
+   else if(g_bearishOB.strength >= SMC_OB_MinStrength && 
+           price >= g_bearishOB.low && price <= g_bearishOB.high)
+   {
+      int ageHours = (int)((TimeCurrent() - g_bearishOB.time) / 3600);
+      if(ageHours > SMC_OB_MaxAgeHours)
+         return signal;
+      
+      bool hasConfirmation = !SMC_RequireEngulfing || IsEngulfingCandle(false);
+      
+      if(hasConfirmation)
+      {
+         signal.valid = true;
+         signal.direction = -1;
+         signal.entry = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+         
+         double slPips = IsXAUUSDSymbol() ? XAUUSD_SL_Pips : 15;
+         double pipValue = SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 10;
+         
+         signal.sl = g_bearishOB.high + (slPips * pipValue);
+         double riskPips = MathAbs(signal.entry - signal.sl) / pipValue;
+         double tpMult = IsXAUUSDSymbol() ? XAUUSD_TP_Mult : Risk_MinRR;
+         signal.tp = signal.entry - (riskPips * tpMult * pipValue);
+         
+         signal.reason = StringFormat("SMC SELL: OB Age:%dh | Str:%.1f", ageHours, g_bearishOB.strength);
+         if(CheckLiquiditySweep(false)) signal.reason += " | LiqSweep";
+         if(hasConfirmation && SMC_RequireEngulfing) signal.reason += " | Engulf";
+         
+         signal.confidence = 60 + (g_bearishOB.strength * 5);
+         if(CheckLiquiditySweep(false)) signal.confidence += 15;
+         if(hasConfirmation && SMC_RequireEngulfing) signal.confidence += 10;
+         
+         if(signal.confidence < SMC_MinConfidence)
+            signal.valid = false;
+      }
+   }
+   
+   return signal;
+}
+
+//+------------------------------------------------------------------+
+//| SCAN ORDER BLOCKS - Cached Hourly                                |
+//+------------------------------------------------------------------+
+void ScanOrderBlocks()
+{
+   // Reset
+   ResetOrderBlocks();
+   
+   // Scan for bullish OB
+   for(int i = 2; i < SMC_OB_Lookback; i++)
+   {
+      double close1 = iClose(_Symbol, PERIOD_M5, i);
+      double open1 = iOpen(_Symbol, PERIOD_M5, i);
+      double high0 = iHigh(_Symbol, PERIOD_M5, i-1);
+      double low1 = iLow(_Symbol, PERIOD_M5, i);
+      double high1 = iHigh(_Symbol, PERIOD_M5, i);
+      
+      if(close1 < open1 && high0 > high1)
+      {
+         double obSize = high1 - low1;
+         double upMove = high0 - low1;
+         
+         if(obSize > 0)
+         {
+            double strength = upMove / obSize;
+            
+            if(strength > g_bullishOB.strength)
+            {
+               g_bullishOB.high = high1;
+               g_bullishOB.low = low1;
+               g_bullishOB.time = iTime(_Symbol, PERIOD_M5, i);
+               g_bullishOB.strength = MathMin(strength, 10.0);
+               g_bullishOB.isBullish = true;
+               g_bullishOB.drawn = false;
+            }
+         }
+      }
+   }
+   
+   // Scan for bearish OB
+   for(int i = 2; i < SMC_OB_Lookback; i++)
+   {
+      double close1 = iClose(_Symbol, PERIOD_M5, i);
+      double open1 = iOpen(_Symbol, PERIOD_M5, i);
+      double low0 = iLow(_Symbol, PERIOD_M5, i-1);
+      double high1 = iHigh(_Symbol, PERIOD_M5, i);
+      double low1 = iLow(_Symbol, PERIOD_M5, i);
+      
+      if(close1 > open1 && low0 < low1)
+      {
+         double obSize = high1 - low1;
+         double downMove = high1 - low0;
+         
+         if(obSize > 0)
+         {
+            double strength = downMove / obSize;
+            
+            if(strength > g_bearishOB.strength)
+            {
+               g_bearishOB.high = high1;
+               g_bearishOB.low = low1;
+               g_bearishOB.time = iTime(_Symbol, PERIOD_M5, i);
+               g_bearishOB.strength = MathMin(strength, 10.0);
+               g_bearishOB.isBullish = false;
+               g_bearishOB.drawn = false;
+            }
+         }
+      }
+   }
+   
+   // Draw order blocks
+   if(SMC_DrawOrderBlocks)
+   {
+      if(g_bullishOB.strength >= SMC_OB_MinStrength && !g_bullishOB.drawn)
+      {
+         DrawOrderBlock(g_bullishOB);
+         g_bullishOB.drawn = true;
+      }
+      if(g_bearishOB.strength >= SMC_OB_MinStrength && !g_bearishOB.drawn)
+      {
+         DrawOrderBlock(g_bearishOB);
+         g_bearishOB.drawn = true;
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| MULTI-LEVEL TP MANAGEMENT - Partial Profit Taking                |
+//+------------------------------------------------------------------+
+void ManageMultiLevelTP(ulong ticket, double openPrice, double currentPrice, double profitPips,
+                        ENUM_POSITION_TYPE posType, double currentSL, double currentTP, double pipValue)
+{
+   // Find tracker for this position
+   int trackerIndex = FindTPTracker(ticket);
+   if(trackerIndex < 0)
+      return;
+   
+   PositionTPTracker tracker = g_tpTrackers[trackerIndex];
+   double currentLot = PositionGetDouble(POSITION_VOLUME);
+   
+   // TP1 Hit - Close 30% of position
+   if(!tracker.tp1_hit && profitPips >= TP1_Pips)
+   {
+      double closeVolume = NormalizeDouble(tracker.originalLot * (TP1_ClosePercent / 100.0), 2);
+      closeVolume = MathMax(SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN), closeVolume);
+      closeVolume = MathMin(currentLot, closeVolume);
+      
+      if(ClosePartialPosition(ticket, closeVolume))
+      {
+         g_tpTrackers[trackerIndex].tp1_hit = true;
+         
+         Print("═══════════════════════════════════════");
+         Print("🎯 TP1 HIT - Partial Close");
+         Print("Profit: +", DoubleToString(profitPips, 1), " pips");
+         Print("Closed: ", closeVolume, " lots (", TP1_ClosePercent, "%)");
+         Print("Remaining: ", DoubleToString(currentLot - closeVolume, 2), " lots");
+         Print("═══════════════════════════════════════");
+         
+         // Move to breakeven after TP1
+         if(TP_MoveToBreakeven && !tracker.be_moved)
+         {
+            double bePrice = openPrice + (TP_BreakevenPlus * pipValue * (posType == POSITION_TYPE_BUY ? 1 : -1));
+            ModifyPosition(ticket, bePrice, 0);
+            g_tpTrackers[trackerIndex].be_moved = true;
+            Print("✅ SL moved to BE + ", TP_BreakevenPlus, " pips");
+         }
+      }
+   }
+   
+   // TP2 Hit - Close another 30%
+   if(tracker.tp1_hit && !tracker.tp2_hit && profitPips >= TP2_Pips)
+   {
+      double closeVolume = NormalizeDouble(tracker.originalLot * (TP2_ClosePercent / 100.0), 2);
+      closeVolume = MathMax(SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN), closeVolume);
+      closeVolume = MathMin(currentLot, closeVolume);
+      
+      if(ClosePartialPosition(ticket, closeVolume))
+      {
+         g_tpTrackers[trackerIndex].tp2_hit = true;
+         
+         Print("═══════════════════════════════════════");
+         Print("🎯 TP2 HIT - Partial Close");
+         Print("Profit: +", DoubleToString(profitPips, 1), " pips");
+         Print("Closed: ", closeVolume, " lots (", TP2_ClosePercent, "%)");
+         Print("Remaining: ", DoubleToString(currentLot - closeVolume, 2), " lots");
+         Print("═══════════════════════════════════════");
+         
+         // Trail remaining position aggressively
+         double trailDist = 30 * pipValue; // Tight 30 pip trail
+         double newSL = (posType == POSITION_TYPE_BUY) ? 
+                        currentPrice - trailDist : 
+                        currentPrice + trailDist;
+         
+         if((posType == POSITION_TYPE_BUY && newSL > currentSL) ||
+            (posType == POSITION_TYPE_SELL && (newSL < currentSL || currentSL == 0)))
+         {
+            ModifyPosition(ticket, newSL, 0);
+            Print("📈 Aggressive trail activated: 30 pips");
+         }
+      }
+   }
+   
+   // TP3 Hit - Close remaining position OR trail to exit
+   if(tracker.tp2_hit && profitPips >= TP3_Pips)
+   {
+      if(ClosePartialPosition(ticket, currentLot))
+      {
+         Print("═══════════════════════════════════════");
+         Print("🏆 TP3 HIT - Full Close");
+         Print("Final Profit: +", DoubleToString(profitPips, 1), " pips");
+         Print("Position fully closed!");
+         Print("═══════════════════════════════════════");
+         
+         RemoveTPTracker(ticket);
+      }
+   }
+   
+   // Trailing stop for remaining position after TP2
+   if(tracker.tp2_hit && profitPips > TP2_Pips + 20)
+   {
+      double trailDist = 25 * pipValue; // Very tight trail
+      double newSL = (posType == POSITION_TYPE_BUY) ? 
+                     currentPrice - trailDist : 
+                     currentPrice + trailDist;
+      
+      if((posType == POSITION_TYPE_BUY && newSL > currentSL) ||
+         (posType == POSITION_TYPE_SELL && (newSL < currentSL || currentSL == 0)))
+      {
+         ModifyPosition(ticket, newSL, 0);
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| CLOSE PARTIAL POSITION                                            |
+//+------------------------------------------------------------------+
+bool ClosePartialPosition(ulong ticket, double volume)
+{
+   MqlTradeRequest request = {};
+   MqlTradeResult result = {};
+   
+   if(!PositionSelectByTicket(ticket))
+      return false;
+   
+   ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+   
+   request.action = TRADE_ACTION_DEAL;
+   request.position = ticket;
+   request.symbol = _Symbol;
+   request.volume = volume;
+   request.type = (posType == POSITION_TYPE_BUY) ? ORDER_TYPE_SELL : ORDER_TYPE_BUY;
+   request.price = (posType == POSITION_TYPE_BUY) ? 
+                   SymbolInfoDouble(_Symbol, SYMBOL_BID) : 
+                   SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   request.deviation = IsXAUUSDSymbol() ? XAUUSD_Deviation : 20;
+   request.magic = Config_MagicNumber;
+   request.type_filling = GetFillingMode();
+   
+   bool orderResult = OrderSend(request, result);
+   
+   if(!orderResult || result.retcode != TRADE_RETCODE_DONE)
+   {
+      Print("❌ Partial close failed: ", GetErrorDescription(result.retcode));
+      return false;
+   }
+   
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| TP TRACKER MANAGEMENT                                             |
+//+------------------------------------------------------------------+
+void AddTPTracker(ulong ticket, double originalLot)
+{
+   int size = ArraySize(g_tpTrackers);
+   ArrayResize(g_tpTrackers, size + 1);
+   
+   g_tpTrackers[size].ticket = ticket;
+   g_tpTrackers[size].tp1_hit = false;
+   g_tpTrackers[size].tp2_hit = false;
+   g_tpTrackers[size].be_moved = false;
+   g_tpTrackers[size].originalLot = originalLot;
+   
+   Print("📊 Multi-TP tracker added for ticket #", ticket);
+}
+
+int FindTPTracker(ulong ticket)
+{
+   for(int i = 0; i < ArraySize(g_tpTrackers); i++)
+   {
+      if(g_tpTrackers[i].ticket == ticket)
+         return i;
+   }
+   return -1;
+}
+
+void RemoveTPTracker(ulong ticket)
+{
+   int index = FindTPTracker(ticket);
+   if(index < 0) return;
+   
+   int size = ArraySize(g_tpTrackers);
+   
+   // Shift array elements
+   for(int i = index; i < size - 1; i++)
+   {
+      g_tpTrackers[i] = g_tpTrackers[i + 1];
+   }
+   
+   ArrayResize(g_tpTrackers, size - 1);
+   Print("📊 Multi-TP tracker removed for ticket #", ticket);
+}
+
+//+------------------------------------------------------------------+
+//| DRAW ORDER BLOCK - Visual Marking                                |
+//+------------------------------------------------------------------+
+void DrawOrderBlock(OrderBlock &ob)
+{
+   static int obCounter = 0;
+   obCounter++;
+   
+   string prefix = "OB_" + IntegerToString(obCounter) + "_";
+   color lineColor = ob.isBullish ? clrDodgerBlue : clrTomato;
+   string label = ob.isBullish ? "Bull OB" : "Bear OB";
+   
+   // Top line
+   ObjectCreate(0, prefix + "Top", OBJ_TREND, 0, ob.time, ob.high, 
+                ob.time + PeriodSeconds(PERIOD_M5) * 100, ob.high);
+   ObjectSetInteger(0, prefix + "Top", OBJPROP_COLOR, lineColor);
+   ObjectSetInteger(0, prefix + "Top", OBJPROP_WIDTH, 2);
+   ObjectSetInteger(0, prefix + "Top", OBJPROP_RAY_RIGHT, true);
+   ObjectSetInteger(0, prefix + "Top", OBJPROP_BACK, true);
+   
+   // Bottom line
+   ObjectCreate(0, prefix + "Bottom", OBJ_TREND, 0, ob.time, ob.low, 
+                ob.time + PeriodSeconds(PERIOD_M5) * 100, ob.low);
+   ObjectSetInteger(0, prefix + "Bottom", OBJPROP_COLOR, lineColor);
+   ObjectSetInteger(0, prefix + "Bottom", OBJPROP_WIDTH, 2);
+   ObjectSetInteger(0, prefix + "Bottom", OBJPROP_RAY_RIGHT, true);
+   ObjectSetInteger(0, prefix + "Bottom", OBJPROP_BACK, true);
+   
+   // Zone rectangle
+   ObjectCreate(0, prefix + "Zone", OBJ_RECTANGLE, 0, ob.time, ob.high, 
+                ob.time + PeriodSeconds(PERIOD_M5) * 100, ob.low);
+   ObjectSetInteger(0, prefix + "Zone", OBJPROP_COLOR, lineColor);
+   ObjectSetInteger(0, prefix + "Zone", OBJPROP_FILL, true);
+   ObjectSetInteger(0, prefix + "Zone", OBJPROP_BACK, true);
+   
+   // Label
+   double midPrice = (ob.high + ob.low) / 2;
+   ObjectCreate(0, prefix + "Label", OBJ_TEXT, 0, ob.time, midPrice);
+   ObjectSetString(0, prefix + "Label", OBJPROP_TEXT, 
+                   label + " [" + DoubleToString(ob.strength, 1) + "]");
+   ObjectSetInteger(0, prefix + "Label", OBJPROP_COLOR, lineColor);
+   ObjectSetInteger(0, prefix + "Label", OBJPROP_FONTSIZE, 8);
+   ObjectSetString(0, prefix + "Label", OBJPROP_FONT, "Arial Bold");
+   
+   Print("📍 ", label, " marked | Strength: ", DoubleToString(ob.strength, 1));
+}
+
+//+------------------------------------------------------------------+
+//| CHECK LIQUIDITY SWEEP                                             |
+//+------------------------------------------------------------------+
+bool CheckLiquiditySweep(bool bullish)
+{
+   double pipValue = SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 10;
+   double sweepDist = SMC_LiqSweepPips * pipValue;
+   
+   double recentLow = iLow(_Symbol, PERIOD_M5, 1);
+   double recentHigh = iHigh(_Symbol, PERIOD_M5, 1);
+   double recentClose = iClose(_Symbol, PERIOD_M5, 1);
+   
+   for(int i = 2; i < 20; i++)
+   {
+      if(bullish)
+      {
+         double prevLow = iLow(_Symbol, PERIOD_M5, i);
+         if(recentLow < prevLow && recentClose > prevLow + sweepDist)
+            return true;
+      }
+      else
+      {
+         double prevHigh = iHigh(_Symbol, PERIOD_M5, i);
+         if(recentHigh > prevHigh && recentClose < prevHigh - sweepDist)
+            return true;
+      }
+   }
+   
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| CHECK ENGULFING CANDLE                                            |
+//+------------------------------------------------------------------+
+bool IsEngulfingCandle(bool bullish)
+{
+   double open0 = iOpen(_Symbol, PERIOD_M5, 1);
+   double close0 = iClose(_Symbol, PERIOD_M5, 1);
+   double open1 = iOpen(_Symbol, PERIOD_M5, 2);
+   double close1 = iClose(_Symbol, PERIOD_M5, 2);
+   double high = iHigh(_Symbol, PERIOD_M5, 1);
+   double low = iLow(_Symbol, PERIOD_M5, 1);
+   
+   double body0 = MathAbs(close0 - open0);
+   double body1 = MathAbs(close1 - open1);
+   double range = high - low;
+   
+   if(range == 0) return false;
+   
+   double bodyPct = (body0 / range) * 100;
+   
+   if(bullish)
+      return (close0 > open0 && close1 < open1 && close0 > open1 && 
+              open0 < close1 && body0 > body1 && bodyPct > SMC_EngulfingBodyPct);
+   else
+      return (close0 < open0 && close1 > open1 && close0 < open1 && 
+              open0 > close1 && body0 > body1 && bodyPct > SMC_EngulfingBodyPct);
+}
+
+//+------------------------------------------------------------------+
+//| BITCOIN SIGNAL - Breakout Strategy                               |
+//+------------------------------------------------------------------+
+TradeSignal GetBitcoinSignal()
+{
+   TradeSignal signal;
+   signal.valid = false;
+   signal.confidence = 0;
+   
+   double high[], low[], close[];
+   ArraySetAsSeries(high, true);
+   ArraySetAsSeries(low, true);
+   ArraySetAsSeries(close, true);
+   
+   if(CopyHigh(_Symbol, PERIOD_M5, 0, BTC_BreakoutPeriod + 1, high) < BTC_BreakoutPeriod + 1) return signal;
+   if(CopyLow(_Symbol, PERIOD_M5, 0, BTC_BreakoutPeriod + 1, low) < BTC_BreakoutPeriod + 1) return signal;
+   if(CopyClose(_Symbol, PERIOD_M5, 0, 2, close) < 2) return signal;
+   
+   double highestHigh = high[ArrayMaximum(high, 1, BTC_BreakoutPeriod)];
+   double lowestLow = low[ArrayMinimum(low, 1, BTC_BreakoutPeriod)];
+   
+   double priceRange = highestHigh - lowestLow;
+   bool highVolatility = (g_cache.atr > priceRange / BTC_VolatilityMult);
+   
+   // Bullish breakout
+   if(close[0] > highestHigh && g_cache.fastMA > g_cache.slowMA && 
+      g_cache.rsi > 50 && highVolatility)
+   {
+      signal.valid = true;
+      signal.direction = 1;
+      signal.entry = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      
+      double pipValue = SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 10;
+      signal.sl = signal.entry - (BTC_SL_Pips * pipValue);
+      double riskPips = MathAbs(signal.entry - signal.sl) / pipValue;
+      signal.tp = signal.entry + (riskPips * BTC_TP_Mult * pipValue);
+      
+      signal.reason = "BTC BREAKOUT BUY: High break | RSI:" + DoubleToString(g_cache.rsi, 1);
+      signal.confidence = 65 + (g_cache.rsi > 60 ? 10 : 0);
+   }
+   // Bearish breakout
+   else if(close[0] < lowestLow && g_cache.fastMA < g_cache.slowMA && 
+           g_cache.rsi < 50 && highVolatility)
+   {
+      signal.valid = true;
+      signal.direction = -1;
+      signal.entry = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      
+      double pipValue = SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 10;
+      signal.sl = signal.entry + (BTC_SL_Pips * pipValue);
+      double riskPips = MathAbs(signal.entry - signal.sl) / pipValue;
+      signal.tp = signal.entry - (riskPips * BTC_TP_Mult * pipValue);
+      
+      signal.reason = "BTC BREAKOUT SELL: Low break | RSI:" + DoubleToString(g_cache.rsi, 1);
+      signal.confidence = 65 + (g_cache.rsi < 40 ? 10 : 0);
+   }
+   
+   return signal;
+}
+
+//+------------------------------------------------------------------+
+//| USDJPY SIGNAL - Optimized with Session Filter                    |
+//+------------------------------------------------------------------+
+TradeSignal GetUSDJPYSignal()
+{
+   TradeSignal signal = GetTrendSignal();
+   
+   if(!signal.valid)
+      return signal;
+   
+   // Override SL/TP for USDJPY
+   double pipValue = SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 10;
+   
+   if(signal.direction == 1)
+   {
+      signal.sl = signal.entry - (USDJPY_SL_Pips * pipValue);
+      double riskPips = MathAbs(signal.entry - signal.sl) / pipValue;
+      signal.tp = signal.entry + (riskPips * USDJPY_TP_Mult * pipValue);
+   }
+   else
+   {
+      signal.sl = signal.entry + (USDJPY_SL_Pips * pipValue);
+      double riskPips = MathAbs(signal.entry - signal.sl) / pipValue;
+      signal.tp = signal.entry - (riskPips * USDJPY_TP_Mult * pipValue);
+   }
+   
+   // Asian session bonus
+   if(USDJPY_AsianSession)
+   {
+      MqlDateTime dt;
+      TimeToStruct(TimeCurrent(), dt);
+      
+      if(dt.hour >= 0 && dt.hour <= 9)
+      {
+         signal.confidence += 10;
+         signal.reason = "USDJPY " + signal.reason + " | Asian Session";
+      }
+   }
+   
+   return signal;
+}
+
+//+------------------------------------------------------------------+
+//| PROCESS SIGNAL - Unified Execution Logic                         |
+//+------------------------------------------------------------------+
+void ProcessSignal(TradeSignal &signal)
+{
+   int openPos = CountOpenPositions();
+   
+   // No positions - open fresh trade
+   if(openPos == 0)
+   {
+      ExecuteTrade(signal);
+      return;
+   }
+   
+   // Check reentry conditions
+   if(Pos_AllowReentry && g_reentry.count < Pos_MaxReentries)
+   {
+      if(ShouldReenter(signal))
+      {
+         ExecuteTrade(signal);
+         g_reentry.count++;
+         Print("✅ Reentry #", g_reentry.count, " executed");
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| SHOULD REENTER - Universal Reentry Logic                         |
+//+------------------------------------------------------------------+
+bool ShouldReenter(TradeSignal &signal)
+{
+   // Must have initial position
+   if(g_reentry.entryPrice == 0)
+      return false;
+   
+   // Same direction only
+   if(signal.direction != g_reentry.direction)
+      return false;
+   
+   // Check distance
+   double pipValue = SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 10;
+   double reentryDist = Pos_ReentryDistance * pipValue;
+   double distance = MathAbs(signal.entry - g_reentry.entryPrice);
+   
+   if(distance > reentryDist * 2)
+      return false;
+   
+   // Time cooldown (5 minutes)
+   if(TimeCurrent() - g_reentry.lastTime < 300)
+      return false;
+   
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| EXECUTE TRADE - Smart Risk + Symbol Adjustments                  |
+//+------------------------------------------------------------------+
+void ExecuteTrade(TradeSignal &signal)
+{
+   // Calculate lot size with smart risk
+   double lotSize = CalculateSmartLotSize(signal.entry, signal.sl);
+   
+   // Apply symbol-specific adjustments
+   lotSize = AdjustLotForSymbol(lotSize);
+   
+   // Validate lot size
+   double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+   if(lotSize < minLot)
+   {
+      Print("⚠️ Lot size too small: ", lotSize);
+      return;
+   }
+   
+   // Prepare order
+   MqlTradeRequest request = {};
+   MqlTradeResult result = {};
+   
+   request.action = TRADE_ACTION_DEAL;
+   request.symbol = _Symbol;
+   request.volume = lotSize;
+   request.type = (signal.direction == 1) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+   request.price = signal.entry;
+   request.sl = signal.sl;
+   request.tp = signal.tp;
+   request.deviation = IsXAUUSDSymbol() ? XAUUSD_Deviation : 20;
+   request.magic = Config_MagicNumber;
+   request.comment = Config_CommentPrefix;
+   
+   // Set filling mode
+   request.type_filling = GetFillingMode();
+   
+   // Send order
+   bool orderResult = OrderSend(request, result);
+   if(orderResult)
+   {
+      if(result.retcode == TRADE_RETCODE_DONE)
+      {
+         Print("═══════════════════════════════════════");
+         Print("✅ TRADE OPENED: ", signal.direction == 1 ? "BUY ⬆️" : "SELL ⬇️");
+         Print("Ticket: #", result.order);
+         Print("Entry: ", DoubleToString(signal.entry, _Digits));
+         Print("SL: ", DoubleToString(signal.sl, _Digits));
+         Print("TP: ", DoubleToString(signal.tp, _Digits));
+         Print("Lot: ", lotSize);
+         Print("Reason: ", signal.reason);
+         Print("Confidence: ", signal.confidence, "%");
+         Print("═══════════════════════════════════════");
+         
+         g_dailyTradeCount++;
+         
+         // Track for reentry
+         if(g_reentry.entryPrice == 0)
+         {
+            g_reentry.entryPrice = signal.entry;
+            g_reentry.direction = signal.direction;
+            g_reentry.count = 0;
+         }
+         g_reentry.lastTime = TimeCurrent();
+         
+         // Add to alert tracking
+         int size = ArraySize(g_alertTickets);
+         ArrayResize(g_alertTickets, size + 1);
+         ArrayResize(g_lastAlertLevel, size + 1);
+         g_alertTickets[size] = result.order;
+         g_lastAlertLevel[size] = 0;
+         
+         // Add to Multi-TP tracker if enabled
+         if(UseMultiTP)
+         {
+            AddTPTracker(result.order, lotSize);
+         }
+      }
+      else
+      {
+         Print("❌ Trade failed: ", result.retcode, " - ", GetErrorDescription(result.retcode));
+      }
+   }
+   else
+   {
+      Print("❌ OrderSend failed with error: ", GetLastError());
+   }
+}
+
+//+------------------------------------------------------------------+
+//| SMART LOT CALCULATION - Risk Scaling                             |
+//+------------------------------------------------------------------+
+double CalculateSmartLotSize(double entry, double sl)
+{
+   if(Risk_UseFixedLot)
+      return Risk_FixedLotSize;
+   
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double currentRisk = Risk_BasePercent;
+   
+   // Smart risk scaling
+   if(Risk_SmartScaling)
+   {
+      double profitPct = ((balance - g_dailyStartBalance) / g_dailyStartBalance) * 100;
+      
+      if(profitPct > 0)
+      {
+         int steps = (int)(profitPct / Risk_ScaleEveryPct);
+         currentRisk = Risk_BasePercent + (steps * 0.5);
+         currentRisk = MathMin(currentRisk, Risk_MaxPercent);
+         
+         if(steps > 0)
+            Print("📈 Smart Risk: +", DoubleToString(profitPct, 1), 
+                  "% → Risk scaled to ", DoubleToString(currentRisk, 1), "%");
+      }
+      else if(profitPct < -5)
+      {
+         currentRisk = Risk_BasePercent * 0.5;
+         Print("⚠️ Smart Risk: ", DoubleToString(profitPct, 1), 
+               "% → Risk reduced to ", DoubleToString(currentRisk, 1), "%");
+      }
+   }
+   
+   double riskAmount = balance * (currentRisk / 100.0);
+   double slDistance = MathAbs(entry - sl);
+   double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+   double tickSize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   
+   if(tickSize == 0) return 0;
+   
+   double lotSize = riskAmount / (slDistance / tickSize * tickValue);
+   
+   // Normalize
+   double lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   double maxLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
+   
+   lotSize = MathFloor(lotSize / lotStep) * lotStep;
+   lotSize = MathMax(SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN), MathMin(maxLot, lotSize));
+   
+   return lotSize;
+}
+
+//+------------------------------------------------------------------+
+//| ADJUST LOT FOR SYMBOL                                             |
+//+------------------------------------------------------------------+
+double AdjustLotForSymbol(double baseLot)
+{
+   double multiplier = 1.0;
+   
+   if(IsBitcoinSymbol())
+      multiplier = Lot_BTC_Pct / 100.0;
+   else if(IsXAUUSDSymbol())
+      multiplier = Lot_XAUUSD_Pct / 100.0;
+   else if(IsUSDJPYSymbol())
+      multiplier = Lot_USDJPY_Pct / 100.0;
+   else if(IsIndexSymbol())
+      multiplier = Lot_Index_Pct / 100.0;
+   else
+      multiplier = Lot_Forex_Pct / 100.0;
+   
+   double adjusted = baseLot * multiplier;
+   double lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   
+   adjusted = MathFloor(adjusted / lotStep) * lotStep;
+   adjusted = MathMax(SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN), adjusted);
+   
+   return adjusted;
+}
+
+//+------------------------------------------------------------------+
+//| MANAGE ALL POSITIONS - Trailing & Break-Even                     |
+//+------------------------------------------------------------------+
+void ManageAllPositions()
+{
+   bool hasPositions = false;
+   
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket > 0 && PositionGetString(POSITION_SYMBOL) == _Symbol &&
+         PositionGetInteger(POSITION_MAGIC) == Config_MagicNumber)
+      {
+         hasPositions = true;
+         ManagePosition(ticket);
+      }
+   }
+   
+   // Reset reentry if no positions
+   if(!hasPositions)
+      ResetReentryTracker();
+}
+
+//+------------------------------------------------------------------+
+//| MANAGE SINGLE POSITION                                            |
+//+------------------------------------------------------------------+
+void ManagePosition(ulong ticket)
+{
+   if(!PositionSelectByTicket(ticket))
+      return;
+      
+   double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+   double currentSL = PositionGetDouble(POSITION_SL);
+   double currentTP = PositionGetDouble(POSITION_TP);
+   ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+   
+   double currentPrice = (posType == POSITION_TYPE_BUY) ? 
+                         SymbolInfoDouble(_Symbol, SYMBOL_BID) : 
+                         SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   
+   double pipValue = SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 10;
+   double profitPips = (posType == POSITION_TYPE_BUY) ? 
+                       (currentPrice - openPrice) / pipValue : 
+                       (openPrice - currentPrice) / pipValue;
+   
+   // Check profit alert
+   CheckProfitAlert(ticket, profitPips);
+   
+   // Multi-Level TP Management (priority) - Handles its own BE logic
+   if(UseMultiTP)
+   {
+      ManageMultiLevelTP(ticket, openPrice, currentPrice, profitPips, posType, currentSL, currentTP, pipValue);
+      return; // Exit here - Multi-TP handles everything including BE
+   }
+   
+   // === STANDARD MANAGEMENT (Only runs if Multi-TP is disabled) ===
+   
+   // XAUUSD specific management
+   if(IsXAUUSDSymbol())
+   {
+      ManageXAUUSDPosition(ticket, openPrice, currentSL, currentTP, posType, currentPrice, profitPips);
+   }
+   else
+   {
+      // Standard Break-Even (only if Multi-TP is OFF)
+      if(Pos_UseBreakEven && profitPips >= Pos_BreakEvenTrigger)
+      {
+         double bePrice = openPrice + (Pos_BreakEvenPlus * pipValue * (posType == POSITION_TYPE_BUY ? 1 : -1));
+         
+         if((posType == POSITION_TYPE_BUY && currentSL < bePrice) ||
+            (posType == POSITION_TYPE_SELL && (currentSL > bePrice || currentSL == 0)))
+         {
+            ModifyPosition(ticket, bePrice, currentTP);
+            Print("✅ Standard Break-even activated at ", DoubleToString(profitPips, 1), " pips");
+         }
+      }
+      
+      // Trailing stop (only if Multi-TP is OFF)
+      if(profitPips >= Pos_TrailActivate)
+      {
+         double trailDist = Pos_TrailDistance * pipValue;
+         double newSL = (posType == POSITION_TYPE_BUY) ? 
+                        currentPrice - trailDist : 
+                        currentPrice + trailDist;
+         
+         if((posType == POSITION_TYPE_BUY && newSL > currentSL && newSL > openPrice) ||
+            (posType == POSITION_TYPE_SELL && (newSL < currentSL || currentSL == 0) && newSL < openPrice))
+         {
+            ModifyPosition(ticket, newSL, currentTP);
+            Print("📈 Standard Trailing SL: ", DoubleToString(profitPips, 1), " pips");
+         }
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| MANAGE XAUUSD POSITION - Special Handling                        |
+//+------------------------------------------------------------------+
+void ManageXAUUSDPosition(ulong ticket, double openPrice, double currentSL, double currentTP,
+                          ENUM_POSITION_TYPE posType, double currentPrice, double profitPips)
+{
+   double pipValue = SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 10;
+   
+   // Break-even at 30 pips
+   if(profitPips >= XAUUSD_BreakEvenPips)
+   {
+      double bePrice = openPrice;
+      
+      if((posType == POSITION_TYPE_BUY && currentSL < bePrice) ||
+         (posType == POSITION_TYPE_SELL && (currentSL > bePrice || currentSL == 0)))
+      {
+         ModifyPosition(ticket, bePrice, currentTP);
+         Print("✅ XAUUSD Break-even at ", DoubleToString(bePrice, _Digits));
+      }
+   }
+   
+   // Trail at 50 pips after break-even
+   if(profitPips > XAUUSD_BreakEvenPips)
+   {
+      double trailDist = XAUUSD_TrailPips * pipValue;
+      double newSL = (posType == POSITION_TYPE_BUY) ? 
+                     currentPrice - trailDist : 
+                     currentPrice + trailDist;
+      
+      if((posType == POSITION_TYPE_BUY && newSL > currentSL && newSL > openPrice) ||
+         (posType == POSITION_TYPE_SELL && (newSL < currentSL || currentSL == 0) && newSL < openPrice))
+      {
+         ModifyPosition(ticket, newSL, currentTP);
+         Print("📈 XAUUSD Trail: ", DoubleToString(profitPips, 1), " pips");
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| CHECK PROFIT ALERT                                                |
+//+------------------------------------------------------------------+
+void CheckProfitAlert(ulong ticket, double profitPips)
+{
+   if(!Alert_Enable || profitPips < Alert_ProfitPips)
+      return;
+   
+   for(int i = 0; i < ArraySize(g_alertTickets); i++)
+   {
+      if(g_alertTickets[i] == ticket && g_lastAlertLevel[i] < Alert_ProfitPips)
+      {
+         Alert("🎯 ", _Symbol, " reached +", DoubleToString(profitPips, 1), " pips!");
+         g_lastAlertLevel[i] = profitPips;
+         break;
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| MODIFY POSITION                                                   |
+//+------------------------------------------------------------------+
+void ModifyPosition(ulong ticket, double sl, double tp)
+{
+   MqlTradeRequest request = {};
+   MqlTradeResult result = {};
+   
+   request.action = TRADE_ACTION_SLTP;
+   request.position = ticket;
+   request.symbol = _Symbol;
+   request.sl = sl;
+   request.tp = tp;
+   
+   if(!OrderSend(request, result))
+   {
+      Print("❌ Modify failed: ", GetLastError());
+   }
+}
+
+//+------------------------------------------------------------------+
+//| HELPER FUNCTIONS - Symbol Detection                              |
+//+------------------------------------------------------------------+
+bool IsXAUUSDSymbol() { return StringFind(_Symbol, "XAU") >= 0 || StringFind(_Symbol, "GOLD") >= 0; }
+bool IsBitcoinSymbol() { return StringFind(_Symbol, "BTC") >= 0 || StringFind(_Symbol, "XBT") >= 0; }
+bool IsUSDJPYSymbol() { return StringFind(_Symbol, "USDJPY") >= 0; }
+bool IsIndexSymbol() { return StringFind(_Symbol, "US30") >= 0 || StringFind(_Symbol, "NAS") >= 0; }
+
+//+------------------------------------------------------------------+
+//| GET ACTIVE STRATEGY                                               |
+//+------------------------------------------------------------------+
+ENUM_STRATEGY_MODE GetActiveStrategy()
+{
+   if(StrategyMode != STRATEGY_AUTO)
+      return StrategyMode;
+   
+   if(IsXAUUSDSymbol()) return XAUUSD_Strategy;
+   if(IsIndexSymbol()) return Index_Strategy;
+   return Forex_Strategy;
+}
+
+string GetStrategyName()
+{
+   ENUM_STRATEGY_MODE strat = GetActiveStrategy();
+   if(strat == STRATEGY_TREND) return "TREND";
+   if(strat == STRATEGY_SMC) return "SMC";
+   return "AUTO";
+}
+
+//+------------------------------------------------------------------+
+//| GET FILLING MODE                                                  |
+//+------------------------------------------------------------------+
+ENUM_ORDER_TYPE_FILLING GetFillingMode()
+{
+   uint filling = (uint)SymbolInfoInteger(_Symbol, SYMBOL_FILLING_MODE);
+   
+   if((filling & SYMBOL_FILLING_FOK) == SYMBOL_FILLING_FOK)
+      return ORDER_FILLING_FOK;
+   if((filling & SYMBOL_FILLING_IOC) == SYMBOL_FILLING_IOC)
+      return ORDER_FILLING_IOC;
+   
+   return ORDER_FILLING_RETURN;
+}
+
+//+------------------------------------------------------------------+
+//| VALIDATION HELPERS                                                |
+//+------------------------------------------------------------------+
+bool ValidateRiskReward(TradeSignal &signal)
+{
+   double risk = MathAbs(signal.entry - signal.sl);
+   double reward = MathAbs(signal.tp - signal.entry);
+   
+   if(risk == 0) return false;
+   
+   return (reward / risk >= Risk_MinRR);
+}
+
+int CountOpenPositions()
+{
+   int count = 0;
+   for(int i = 0; i < PositionsTotal(); i++)
+   {
+      if(PositionGetTicket(i) > 0 && 
+         PositionGetString(POSITION_SYMBOL) == _Symbol &&
+         PositionGetInteger(POSITION_MAGIC) == Config_MagicNumber)
+         count++;
+   }
+   return count;
+}
+
+//+------------------------------------------------------------------+
+//| DAILY MANAGEMENT                                                  |
+//+------------------------------------------------------------------+
+datetime GetCurrentDay()
+{
+   return TimeCurrent() - (TimeCurrent() % 86400);
+}
+
+void CheckDailyReset()
+{
+   datetime today = GetCurrentDay();
+   if(today != g_currentDay)
+   {
+      Print("═══════════════════════════════════════");
+      Print("📅 NEW DAY");
+      Print("Previous P&L: $", DoubleToString(g_dailyPnL, 2));
+      Print("Trades: ", g_dailyTradeCount);
+      Print("═══════════════════════════════════════");
+      
+      g_currentDay = today;
+      g_dailyTradeCount = 0;
+      g_dailyPnL = 0;
+      g_dailyStartBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+      
+      ArrayResize(g_lastAlertLevel, 0);
+      ArrayResize(g_alertTickets, 0);
+   }
+}
+
+void UpdateDailyPnL()
+{
+   double openProfit = 0;
+   for(int i = 0; i < PositionsTotal(); i++)
+   {
+      if(PositionGetTicket(i) > 0 && 
+         PositionGetString(POSITION_SYMBOL) == _Symbol &&
+         PositionGetInteger(POSITION_MAGIC) == Config_MagicNumber)
+         openProfit += PositionGetDouble(POSITION_PROFIT);
+   }
+   
+   double closedProfit = 0;
+   if(HistorySelect(g_currentDay, TimeCurrent()))
+   {
+      for(int i = HistoryDealsTotal() - 1; i >= 0; i--)
+      {
+         ulong ticket = HistoryDealGetTicket(i);
+         if(ticket > 0 && 
+            HistoryDealGetString(ticket, DEAL_SYMBOL) == _Symbol &&
+            HistoryDealGetInteger(ticket, DEAL_MAGIC) == Config_MagicNumber)
+            closedProfit += HistoryDealGetDouble(ticket, DEAL_PROFIT);
+      }
+   }
+   
+   g_dailyPnL = openProfit + closedProfit;
+}
+
+//+------------------------------------------------------------------+
+//| MARKET ANALYSIS                                                   |
+//+------------------------------------------------------------------+
+void AnalyzeMarket()
+{
+   // Determine market condition
+   if(g_cache.fastMA > g_cache.slowMA && g_cache.rsi < 50)
+      g_market.status = "Bullish Pullback";
+   else if(g_cache.fastMA > g_cache.slowMA)
+      g_market.status = "Strong Uptrend";
+   else if(g_cache.fastMA < g_cache.slowMA && g_cache.rsi > 50)
+      g_market.status = "Bearish Pullback";
+   else if(g_cache.fastMA < g_cache.slowMA)
+      g_market.status = "Strong Downtrend";
+   else
+      g_market.status = "Ranging";
+   
+   g_market.rsiValue = g_cache.rsi;
+   g_market.trendUp = (g_cache.fastMA > g_cache.slowMA);
+   
+   // OB Status
+   if(g_bullishOB.strength >= SMC_OB_MinStrength)
+      g_market.obStatus = "Bull OB " + DoubleToString(g_bullishOB.strength, 1);
+   else if(g_bearishOB.strength >= SMC_OB_MinStrength)
+      g_market.obStatus = "Bear OB " + DoubleToString(g_bearishOB.strength, 1);
+   else
+      g_market.obStatus = "No valid OB";
+}
+
+//+------------------------------------------------------------------+
+//| RESET FUNCTIONS                                                   |
+//+------------------------------------------------------------------+
+void ResetReentryTracker()
+{
+   g_reentry.entryPrice = 0;
+   g_reentry.direction = 0;
+   g_reentry.count = 0;
+   g_reentry.lastTime = 0;
+}
+
+void ResetOrderBlocks()
+{
+   g_bullishOB.time = 0;
+   g_bullishOB.high = 0;
+   g_bullishOB.low = 0;
+   g_bullishOB.strength = 0;
+   g_bullishOB.isBullish = true;
+   g_bullishOB.drawn = false;
+   
+   g_bearishOB.time = 0;
+   g_bearishOB.high = 0;
+   g_bearishOB.low = 0;
+   g_bearishOB.strength = 0;
+   g_bearishOB.isBullish = false;
+   g_bearishOB.drawn = false;
+}
+
+//+------------------------------------------------------------------+
+//| UI PANEL - Clean & Centered                                      |
+//+------------------------------------------------------------------+
+void CreateInfoPanel()
+{
+   string prefix = "PD_";
+   int width = 250;
+   int centerX = UI_PanelX + (width / 2);
+   
+   // Background
+   ObjectCreate(0, prefix+"BG", OBJ_RECTANGLE_LABEL, 0, 0, 0);
+   ObjectSetInteger(0, prefix+"BG", OBJPROP_XDISTANCE, UI_PanelX);
+   ObjectSetInteger(0, prefix+"BG", OBJPROP_YDISTANCE, UI_PanelY);
+   ObjectSetInteger(0, prefix+"BG", OBJPROP_XSIZE, width);
+   ObjectSetInteger(0, prefix+"BG", OBJPROP_YSIZE, 460);
+   ObjectSetInteger(0, prefix+"BG", OBJPROP_BGCOLOR, clrBlack);
+   ObjectSetInteger(0, prefix+"BG", OBJPROP_BORDER_TYPE, BORDER_FLAT);
+   ObjectSetInteger(0, prefix+"BG", OBJPROP_COLOR, clrDodgerBlue);
+   ObjectSetInteger(0, prefix+"BG", OBJPROP_WIDTH, 2);
+   ObjectSetInteger(0, prefix+"BG", OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   
+   // Title
+   CreateLabelCenter(prefix+"Title", "💰 PipDaddy4X", centerX, UI_PanelY+10, clrYellow, 10, "Arial Bold");
+   
+   // Strategy & Symbol
+   CreateLabelCenter(prefix+"Strategy", "TREND", centerX, UI_PanelY+35, clrWhite, 8, "Arial");
+   CreateLabelCenter(prefix+"Symbol", _Symbol, centerX, UI_PanelY+55, clrWhite, 8, "Arial");
+   CreateLabelCenter(prefix+"Spread", "0.0 pips", centerX, UI_PanelY+75, clrWhite, 7, "Arial");
+   
+   // Signal
+   CreateLabelCenter(prefix+"SigTitle", "--- Signal ---", centerX, UI_PanelY+100, clrLightGray, 8, "Arial Bold");
+   CreateLabelCenter(prefix+"SigStatus", "Waiting...", centerX, UI_PanelY+120, clrGray, 8, "Arial");
+   CreateLabelCenter(prefix+"SigReason", "None", centerX, UI_PanelY+140, clrGray, 7, "Arial");
+   CreateLabelCenter(prefix+"SigConf", "0%", centerX, UI_PanelY+160, clrGray, 7, "Arial");
+   
+   // Analysis
+   CreateLabelCenter(prefix+"AnaTitle", "--- Analysis ---", centerX, UI_PanelY+180, clrLightGray, 8, "Arial Bold");
+   CreateLabelCenter(prefix+"Scanning", "⏺ Scanning...", centerX, UI_PanelY+200, clrYellow, 7, "Arial");
+   CreateLabelCenter(prefix+"Market", "Neutral", centerX, UI_PanelY+215, clrGray, 7, "Arial");
+   CreateLabelCenter(prefix+"RSI", "RSI: --", centerX, UI_PanelY+230, clrGray, 7, "Arial");
+   CreateLabelCenter(prefix+"Trend", "Trend: --", centerX, UI_PanelY+245, clrGray, 7, "Arial");
+   CreateLabelCenter(prefix+"OB", "Searching...", centerX, UI_PanelY+260, clrGray, 7, "Arial");
+   
+   // Account
+   CreateLabelCenter(prefix+"AccTitle", "--- Account ---", centerX, UI_PanelY+285, clrLightGray, 8, "Arial Bold");
+   CreateLabelCenter(prefix+"Balance", "Bal: $0", centerX, UI_PanelY+305, clrWhite, 7, "Arial");
+   CreateLabelCenter(prefix+"Equity", "Eq: $0", centerX, UI_PanelY+320, clrWhite, 7, "Arial");
+   CreateLabelCenter(prefix+"NextLot", "Next: 0.00", centerX, UI_PanelY+340, clrYellow, 7, "Arial");
+   
+   // Stats
+   CreateLabelCenter(prefix+"StatTitle", "--- Stats ---", centerX, UI_PanelY+365, clrLightGray, 8, "Arial Bold");
+   CreateLabelCenter(prefix+"Trades", "0/12", centerX, UI_PanelY+385, clrWhite, 7, "Arial");
+   CreateLabelCenter(prefix+"PnL", "$0.00", centerX, UI_PanelY+400, clrWhite, 7, "Arial");
+   CreateLabelCenter(prefix+"Positions", "0/3", centerX, UI_PanelY+415, clrWhite, 7, "Arial");
+   
+   // Version
+   CreateLabelCenter(prefix+"Version", "v3.0", centerX, UI_PanelY+435, clrDarkGray, 7, "Arial");
+}
+
+void CreateLabelCenter(string name, string text, int x, int y, color clr, int size, string font)
+{
+   ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, size);
+   ObjectSetString(0, name, OBJPROP_FONT, font);
+   ObjectSetString(0, name, OBJPROP_TEXT, text);
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_CENTER);
+}
+
+//+------------------------------------------------------------------+
+//| UPDATE INFO PANEL                                                 |
+//+------------------------------------------------------------------+
+void UpdateInfoPanel()
+{
+   string prefix = "PD_";
+   
+   if(ObjectFind(0, prefix+"BG") < 0)
+      return;
+   
+   // Strategy
+   ObjectSetString(0, prefix+"Strategy", OBJPROP_TEXT, GetStrategyName() + " 🎯");
+   ObjectSetInteger(0, prefix+"Strategy", OBJPROP_COLOR, clrLimeGreen);
+   
+   // Spread
+   long spread = SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
+   double spreadPips = spread * SymbolInfoDouble(_Symbol, SYMBOL_POINT) / 
+                       (SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 10);
+   color spreadColor = spreadPips > Filter_MaxSpread ? clrRed : clrLimeGreen;
+   ObjectSetString(0, prefix+"Spread", OBJPROP_TEXT, DoubleToString(spreadPips, 1) + " pips");
+   ObjectSetInteger(0, prefix+"Spread", OBJPROP_COLOR, spreadColor);
+   
+   // Scanning animation
+   string dots = "";
+   for(int i = 0; i < (g_scanCounter % 4); i++) dots += ".";
+   ObjectSetString(0, prefix+"Scanning", OBJPROP_TEXT, "⏺ Scanning" + dots);
+   ObjectSetInteger(0, prefix+"Scanning", OBJPROP_COLOR, (g_scanCounter % 2 == 0) ? clrYellow : clrOrange);
+   
+   // Market analysis
+   color marketColor = clrGray;
+   if(StringFind(g_market.status, "Uptrend") >= 0 || StringFind(g_market.status, "Bullish") >= 0)
+      marketColor = clrLimeGreen;
+   else if(StringFind(g_market.status, "Downtrend") >= 0 || StringFind(g_market.status, "Bearish") >= 0)
+      marketColor = clrOrangeRed;
+   else
+      marketColor = clrYellow;
+   
+   ObjectSetString(0, prefix+"Market", OBJPROP_TEXT, g_market.status);
+   ObjectSetInteger(0, prefix+"Market", OBJPROP_COLOR, marketColor);
+   
+   // RSI
+   color rsiColor = clrGray;
+   if(g_market.rsiValue > Trend_RSI_High)
+      rsiColor = clrOrangeRed;
+   else if(g_market.rsiValue < Trend_RSI_Low)
+      rsiColor = clrLimeGreen;
+   else
+      rsiColor = clrYellow;
+   
+   ObjectSetString(0, prefix+"RSI", OBJPROP_TEXT, "RSI: " + DoubleToString(g_market.rsiValue, 1));
+   ObjectSetInteger(0, prefix+"RSI", OBJPROP_COLOR, rsiColor);
+   
+   // Trend
+   string trendText = g_market.trendUp ? "UP ↗" : "DOWN ↘";
+   color trendColor = g_market.trendUp ? clrLimeGreen : clrOrangeRed;
+   ObjectSetString(0, prefix+"Trend", OBJPROP_TEXT, trendText);
+   ObjectSetInteger(0, prefix+"Trend", OBJPROP_COLOR, trendColor);
+   
+   // OB
+   color obColor = clrGray;
+   if(StringFind(g_market.obStatus, "Bull") >= 0)
+      obColor = clrLimeGreen;
+   else if(StringFind(g_market.obStatus, "Bear") >= 0)
+      obColor = clrOrangeRed;
+   
+   ObjectSetString(0, prefix+"OB", OBJPROP_TEXT, g_market.obStatus);
+   ObjectSetInteger(0, prefix+"OB", OBJPROP_COLOR, obColor);
+   
+   // Account
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+   
+   ObjectSetString(0, prefix+"Balance", OBJPROP_TEXT, "Bal: $" + DoubleToString(balance, 0));
+   
+   color eqColor = equity >= balance ? clrLimeGreen : clrOrange;
+   ObjectSetString(0, prefix+"Equity", OBJPROP_TEXT, "Eq: $" + DoubleToString(equity, 0));
+   ObjectSetInteger(0, prefix+"Equity", OBJPROP_COLOR, eqColor);
+   
+   // Next lot
+   double nextLot = CalculateSmartLotSize(SymbolInfoDouble(_Symbol, SYMBOL_BID), 
+                                          SymbolInfoDouble(_Symbol, SYMBOL_BID) - g_cache.atr);
+   nextLot = AdjustLotForSymbol(nextLot);
+   ObjectSetString(0, prefix+"NextLot", OBJPROP_TEXT, "Next: " + DoubleToString(nextLot, 2));
+   
+   // Stats
+   ObjectSetString(0, prefix+"Trades", OBJPROP_TEXT, 
+                   IntegerToString(g_dailyTradeCount) + "/" + IntegerToString(Risk_MaxTradesPerDay));
+   
+   color pnlColor = g_dailyPnL >= 0 ? clrLimeGreen : clrRed;
+   ObjectSetString(0, prefix+"PnL", OBJPROP_TEXT, "$" + DoubleToString(g_dailyPnL, 2));
+   ObjectSetInteger(0, prefix+"PnL", OBJPROP_COLOR, pnlColor);
+   
+   int openPos = CountOpenPositions();
+   ObjectSetString(0, prefix+"Positions", OBJPROP_TEXT, 
+                   IntegerToString(openPos) + "/" + IntegerToString(Pos_MaxOpen));
+}
+
+//+------------------------------------------------------------------+
+//| DISPLAY SIGNAL INFO                                               |
+//+------------------------------------------------------------------+
+void DisplaySignalInfo(TradeSignal &signal)
+{
+   string prefix = "PD_";
+   
+   if(ObjectFind(0, prefix+"SigStatus") < 0)
+      return;
+   
+   string statusText = signal.direction == 1 ? "🟢 BUY" : "🔴 SELL";
+   color statusColor = signal.direction == 1 ? clrLimeGreen : clrOrangeRed;
+   
+   ObjectSetString(0, prefix+"SigStatus", OBJPROP_TEXT, statusText);
+   ObjectSetInteger(0, prefix+"SigStatus", OBJPROP_COLOR, statusColor);
+   
+   // Truncate reason if needed
+   string reason = signal.reason;
+   if(StringLen(reason) > 45)
+      reason = StringSubstr(reason, 0, 42) + "...";
+   
+   ObjectSetString(0, prefix+"SigReason", OBJPROP_TEXT, reason);
+   ObjectSetInteger(0, prefix+"SigReason", OBJPROP_COLOR, clrWhite);
+   
+   color confColor = clrYellow;
+   if(signal.confidence >= 85) confColor = clrLimeGreen;
+   else if(signal.confidence < 65) confColor = clrOrange;
+   
+   ObjectSetString(0, prefix+"SigConf", OBJPROP_TEXT, DoubleToString(signal.confidence, 0) + "%");
+   ObjectSetInteger(0, prefix+"SigConf", OBJPROP_COLOR, confColor);
+   
+   // Print to terminal
+   Print("═══════════════════════════════════════");
+   Print("📊 ", signal.direction == 1 ? "BUY SIGNAL ⬆️" : "SELL SIGNAL ⬇️");
+   Print("Entry: ", DoubleToString(signal.entry, _Digits));
+   Print("SL: ", DoubleToString(signal.sl, _Digits));
+   Print("TP: ", DoubleToString(signal.tp, _Digits));
+   Print("R:R: ", DoubleToString(MathAbs(signal.tp - signal.entry) / MathAbs(signal.entry - signal.sl), 2));
+   Print("Confidence: ", signal.confidence, "%");
+   Print("Reason: ", signal.reason);
+   Print("═══════════════════════════════════════");
+}
+
+//+------------------------------------------------------------------+
+//| ERROR DESCRIPTIONS                                                 |
+//+------------------------------------------------------------------+
+string GetErrorDescription(uint retcode)
+{
+   switch(retcode)
+   {
+      case TRADE_RETCODE_INVALID: return "Invalid request";
+      case TRADE_RETCODE_INVALID_VOLUME: return "Invalid volume";
+      case TRADE_RETCODE_INVALID_PRICE: return "Invalid price";
+      case TRADE_RETCODE_INVALID_STOPS: return "Invalid stops";
+      case TRADE_RETCODE_TRADE_DISABLED: return "Trading disabled";
+      case TRADE_RETCODE_MARKET_CLOSED: return "Market closed";
+      case TRADE_RETCODE_NO_MONEY: return "Not enough money";
+      case TRADE_RETCODE_INVALID_FILL: return "Invalid fill mode";
+      case TRADE_RETCODE_CONNECTION: return "No connection";
+      default: return "Error: " + IntegerToString(retcode);
+   }
+}
+
+//+------------------------------------------------------------------+
+//|                          END OF PIPDADDY4X v3.0                   |
+//+------------------------------------------------------------------+
